@@ -1,30 +1,27 @@
-﻿using ABI.Windows.ApplicationModel.UserDataTasks;
-using InTheHand.Bluetooth;
+﻿using InTheHand.Bluetooth;
 using ZwiftPlayConsoleApp.BLE;
 using ZwiftPlayConsoleApp.Zap;
 
 public class Program
 {
     private static readonly Dictionary<string, ZwiftPlayBleManager> _bleManagers = new();
+    private static CancellationTokenSource _scanCts = new();
 
-    public static void Main(string[] args)
+    public static async Task Main(string[] args)
     {
-        // bluetooth availablity on PC.
-
-        var available = Bluetooth.GetAvailabilityAsync().GetAwaiter().GetResult();
+        var available = await Bluetooth.GetAvailabilityAsync();
         if (!available)
         {
             throw new ArgumentException("Need Bluetooth");
         }
 
-        /*Bluetooth.AvailabilityChanged += delegate(object? sender, EventArgs eventArgs)
-        {
-            Console.WriteLine("BLE Availability Changed:" + eventArgs.ToString());
-        };*/
-
         Bluetooth.AdvertisementReceived += (sender, scanResult) =>
         {
-            // not always getting name... so checking for the manufacturer data.
+            if (scanResult.ManufacturerData == null || !scanResult.ManufacturerData.ContainsKey(ZapConstants.ZWIFT_MANUFACTURER_ID))
+            {
+                return;
+            }
+
             if (!scanResult.ManufacturerData.ContainsKey(ZapConstants.ZWIFT_MANUFACTURER_ID))
             {
                 return;
@@ -52,18 +49,37 @@ public class Program
             clientManager.ConnectAsync();
         };
 
-        // keep scanning until we find both controllers.
-        Task.Run(async () =>
+        var scanTask = Task.Run(async () =>
         {
-            while (_bleManagers.Count < 2)
+            try
             {
-                Console.WriteLine("Start BLE Scan - Connected " + _bleManagers.Count + "/2");
-                await Bluetooth.RequestLEScanAsync();
-                await Task.Delay(30000);
+                while (_bleManagers.Count < 2)
+                {
+                    Console.WriteLine("Start BLE Scan - Connected " + _bleManagers.Count + "/2");
+                    var options = new BluetoothLEScanOptions();
+                    await Bluetooth.RequestLEScanAsync(options);
+                    try
+                    {
+                        await Task.Delay(30000, _scanCts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        Console.WriteLine("Scanning canceled");
+                        break;
+                    }
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                Console.WriteLine("BLE scanning stopped - resources disposed");
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("BLE scanning stopped");
             }
             Console.WriteLine("BLE Scan - loop done");
         });
-
+        
         var run = true;
         while (run)
         {
@@ -76,9 +92,15 @@ public class Program
                     case "q":
                     case "quit":
                         run = false;
+                        _scanCts.Cancel();
                         break;
                 }
             }
+        }
+
+        foreach (var manager in _bleManagers.Values)
+        {
+            manager.Dispose();
         }
     }
 }
