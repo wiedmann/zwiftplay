@@ -3,7 +3,7 @@ using ZwiftPlayConsoleApp.Zap;
 
 namespace ZwiftPlayConsoleApp.BLE;
 
-public class ZwiftPlayBleManager
+public class ZwiftPlayBleManager : IDisposable
 {
     private readonly ZwiftPlayDevice _zapDevice = new();
 
@@ -20,44 +20,62 @@ public class ZwiftPlayBleManager
         _isLeft = isLeft;
     }
 
-    public async void ConnectAsync()
+    public async Task ConnectAsync()
     {
-        var gatt = _device.Gatt;
-        await gatt.ConnectAsync();
-
-        if (gatt.IsConnected)
+        try
         {
-            Console.WriteLine("Connected");
+            var gatt = _device.Gatt;
+            await gatt.ConnectAsync();
 
-            //var services = gatt.GetPrimaryServicesAsync().GetAwaiter().GetResult();
-            RegisterCharacteristics(gatt);
+            if (gatt.IsConnected)
+            {
+                Console.WriteLine("Connected");
+                await RegisterCharacteristics(gatt);
+                Console.WriteLine("Send Start");
+                if (_syncRxCharacteristic != null)
+                {
+                    await _syncRxCharacteristic.WriteValueWithResponseAsync(_zapDevice.BuildHandshakeStart());
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Connection failed: {ex.Message}");
+        }
+    }
+    private async Task RegisterCharacteristics(RemoteGattServer gatt)
+    {
+        try
+        {
+            var zapService = await gatt.GetPrimaryServiceAsync(ZapBleUuids.ZWIFT_CUSTOM_SERVICE_UUID);
+            _asyncCharacteristic = await zapService.GetCharacteristicAsync(ZapBleUuids.ZWIFT_ASYNC_CHARACTERISTIC_UUID);
+            _syncRxCharacteristic = await zapService.GetCharacteristicAsync(ZapBleUuids.ZWIFT_SYNC_RX_CHARACTERISTIC_UUID);
+            _syncTxCharacteristic = await zapService.GetCharacteristicAsync(ZapBleUuids.ZWIFT_SYNC_TX_CHARACTERISTIC_UUID);
 
-            Console.WriteLine("Send Start");
-            _syncRxCharacteristic.WriteValueWithResponseAsync(_zapDevice.BuildHandshakeStart()).GetAwaiter().GetResult();
+            await _asyncCharacteristic.StartNotificationsAsync();
+            _asyncCharacteristic.CharacteristicValueChanged += (sender, eventArgs) =>
+            {
+                _zapDevice.ProcessCharacteristic("Async", eventArgs.Value);
+            };
+
+            await _syncTxCharacteristic.StartNotificationsAsync();
+            _syncTxCharacteristic.CharacteristicValueChanged += (sender, eventArgs) =>
+            {
+                _zapDevice.ProcessCharacteristic("Sync Tx", eventArgs.Value);
+            };
+        }
+        catch (TaskCanceledException)
+        {
+            Console.WriteLine("BLE connection was canceled during characteristic registration");
         }
     }
 
-    private async void RegisterCharacteristics(RemoteGattServer gatt)
+    public void Dispose()
     {
-        var zapService = gatt.GetPrimaryServiceAsync(ZapBleUuids.ZWIFT_CUSTOM_SERVICE_UUID).GetAwaiter().GetResult();
-        _asyncCharacteristic = zapService.GetCharacteristicAsync(ZapBleUuids.ZWIFT_ASYNC_CHARACTERISTIC_UUID)
-            .GetAwaiter().GetResult();
-
-        _syncRxCharacteristic = zapService.GetCharacteristicAsync(ZapBleUuids.ZWIFT_SYNC_RX_CHARACTERISTIC_UUID)
-            .GetAwaiter().GetResult();
-        _syncTxCharacteristic = zapService.GetCharacteristicAsync(ZapBleUuids.ZWIFT_SYNC_TX_CHARACTERISTIC_UUID)
-            .GetAwaiter().GetResult();
-
-        _asyncCharacteristic.StartNotificationsAsync().GetAwaiter().GetResult();
-        _asyncCharacteristic.CharacteristicValueChanged += (sender, eventArgs) =>
+        if (_device.Gatt != null)
         {
-            _zapDevice.ProcessCharacteristic("Async", eventArgs.Value);
-        };
-
-        _syncTxCharacteristic.StartNotificationsAsync().GetAwaiter().GetResult();
-        _syncTxCharacteristic.CharacteristicValueChanged += (sender, eventArgs) =>
-        {
-            _zapDevice.ProcessCharacteristic("Sync Tx", eventArgs.Value);
-        };
+            _device.Gatt.Disconnect();
+        }
     }
+
 }
