@@ -35,7 +35,6 @@ public class BatteryStatus
                     break;
                 default:
                     throw new ArgumentException("Unexpected wire type");
-                    break;
             }
         }
     }
