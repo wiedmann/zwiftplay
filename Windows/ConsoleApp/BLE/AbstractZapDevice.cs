@@ -1,4 +1,5 @@
-﻿using ZwiftPlayConsoleApp.Utils;
+﻿using ZwiftPlayConsoleApp.Logging;
+using ZwiftPlayConsoleApp.Utils;
 using ZwiftPlayConsoleApp.Zap;
 using ZwiftPlayConsoleApp.Zap.Crypto;
 
@@ -6,18 +7,35 @@ namespace ZwiftPlayConsoleApp.BLE;
 
 public abstract class AbstractZapDevice
 {
+    protected readonly IZwiftLogger _logger;
+
+    protected AbstractZapDevice(IZwiftLogger logger)
+    {
+        _logger = logger;
+        _zapEncryption = new ZapCrypto(_localKeyProvider);
+
+    }
+
     public static bool Debug = false;
 
     private readonly LocalKeyProvider _localKeyProvider = new();
-    protected readonly ZapCrypto _zapEncryption;
+    protected ZapCrypto _zapEncryption;
 
+    public void ResetEncryption()
+    {
+        _zapEncryption = new ZapCrypto(_localKeyProvider);
+    }
+    
+    /*
     protected AbstractZapDevice()
     {
         _zapEncryption = new ZapCrypto(_localKeyProvider);
     }
+    */
 
     public byte[] BuildHandshakeStart()
     {
+        ResetEncryption();
         var buffer = new ByteBuffer();
         buffer.WriteBytes(ZapConstants.RIDE_ON);
         buffer.WriteBytes(ZapConstants.REQUEST_START);
@@ -29,7 +47,6 @@ public abstract class AbstractZapDevice
     {
         if (Debug)
             Console.WriteLine($"{characteristicName} {Utils.Utils.ByteArrayToStringHex(bytes)}");
-
         // todo make better like below kotlin
         if (bytes[0] == ZapConstants.RIDE_ON[0] && bytes[1] == ZapConstants.RIDE_ON[1] && bytes[2] == ZapConstants.RIDE_ON[2] && bytes[3] == ZapConstants.RIDE_ON[3])
         {
