@@ -1,81 +1,138 @@
 ﻿using InTheHand.Bluetooth;
+using ZwiftPlayConsoleApp.Logging;
 using ZwiftPlayConsoleApp.Zap;
 
 namespace ZwiftPlayConsoleApp.BLE;
 
-public class ZwiftPlayBleManager : IDisposable
+public partial class ZwiftPlayBleManager : IDisposable
 {
-    private readonly ZwiftPlayDevice _zapDevice = new();
-
+    private readonly ZwiftPlayDevice _zapDevice;
     private readonly BluetoothDevice _device;
     private readonly bool _isLeft;
+    private readonly IZwiftLogger _logger;
+    private bool _isDisposed;
+    private readonly object _lock = new();
 
-    private static GattCharacteristic _asyncCharacteristic;
-    private static GattCharacteristic _syncRxCharacteristic;
-    private static GattCharacteristic _syncTxCharacteristic;
 
-    public ZwiftPlayBleManager(BluetoothDevice device, bool isLeft)
+    private static GattCharacteristic? _asyncCharacteristic;
+    private static GattCharacteristic? _syncRxCharacteristic;
+    private static GattCharacteristic? _syncTxCharacteristic;
+
+    public ZwiftPlayBleManager(BluetoothDevice device, bool isLeft, IZwiftLogger logger)
     {
         _device = device;
         _isLeft = isLeft;
+        _logger = new ConfigurableLogger(((ConfigurableLogger)logger)._config, nameof(ZwiftPlayBleManager));
+        _zapDevice = new ZwiftPlayDevice(new ConfigurableLogger(((ConfigurableLogger)logger)._config, nameof(ZwiftPlayDevice)));
     }
 
     public async Task ConnectAsync()
     {
         try
         {
+            _isDisposed = false;  // Reset disposal state
             var gatt = _device.Gatt;
             await gatt.ConnectAsync();
 
             if (gatt.IsConnected)
             {
-                Console.WriteLine("Connected");
+                _zapDevice.ResetEncryption();
+                _logger.LogInfo($"Connected {(_isLeft ? "Left" : "Right")} controller");
                 await RegisterCharacteristics(gatt);
-                Console.WriteLine("Send Start");
+
                 if (_syncRxCharacteristic != null)
                 {
-                    await _syncRxCharacteristic.WriteValueWithResponseAsync(_zapDevice.BuildHandshakeStart());
+                    var handshakeData = _zapDevice.BuildHandshakeStart();
+                    _logger.LogDebug($"Sending handshake data: {BitConverter.ToString(handshakeData)}");
+                    await _syncRxCharacteristic.WriteValueWithResponseAsync(handshakeData);
+                    _logger.LogInfo("Handshake initiated");
                 }
+
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Connection failed: {ex.Message}");
+            _logger.LogError("Connection failed", ex);
+            throw;
         }
     }
     private async Task RegisterCharacteristics(RemoteGattServer gatt)
     {
-        try
-        {
-            var zapService = await gatt.GetPrimaryServiceAsync(ZapBleUuids.ZWIFT_CUSTOM_SERVICE_UUID);
-            _asyncCharacteristic = await zapService.GetCharacteristicAsync(ZapBleUuids.ZWIFT_ASYNC_CHARACTERISTIC_UUID);
-            _syncRxCharacteristic = await zapService.GetCharacteristicAsync(ZapBleUuids.ZWIFT_SYNC_RX_CHARACTERISTIC_UUID);
-            _syncTxCharacteristic = await zapService.GetCharacteristicAsync(ZapBleUuids.ZWIFT_SYNC_TX_CHARACTERISTIC_UUID);
+        _logger.LogDebug("Starting characteristic registration");
 
+        var zapService = await gatt.GetPrimaryServiceAsync(ZapBleUuids.ZWIFT_CUSTOM_SERVICE_UUID);
+        if (zapService == null)
+        {
+            _logger.LogError("ZAP service not found");
+            return;
+        }
+
+        _asyncCharacteristic = await zapService.GetCharacteristicAsync(ZapBleUuids.ZWIFT_ASYNC_CHARACTERISTIC_UUID);
+        _syncRxCharacteristic = await zapService.GetCharacteristicAsync(ZapBleUuids.ZWIFT_SYNC_RX_CHARACTERISTIC_UUID);
+        _syncTxCharacteristic = await zapService.GetCharacteristicAsync(ZapBleUuids.ZWIFT_SYNC_TX_CHARACTERISTIC_UUID);
+
+        if (_asyncCharacteristic != null)
+        {
             await _asyncCharacteristic.StartNotificationsAsync();
             _asyncCharacteristic.CharacteristicValueChanged += (sender, eventArgs) =>
             {
-                _zapDevice.ProcessCharacteristic("Async", eventArgs.Value);
+                _logger.LogDebug($"Async characteristic value changed: {BitConverter.ToString(eventArgs.Value)}");
+                ProcessCharacteristic("Async", eventArgs.Value);
             };
+        }
 
+        if (_syncTxCharacteristic != null)
+        {
             await _syncTxCharacteristic.StartNotificationsAsync();
             _syncTxCharacteristic.CharacteristicValueChanged += (sender, eventArgs) =>
             {
-                _zapDevice.ProcessCharacteristic("Sync Tx", eventArgs.Value);
+                _logger.LogDebug($"Sync Tx characteristic value changed: {BitConverter.ToString(eventArgs.Value)}");
+                ProcessCharacteristic("Sync Tx", eventArgs.Value);
             };
         }
-        catch (TaskCanceledException)
-        {
-            Console.WriteLine("BLE connection was canceled during characteristic registration");
-        }
-    }
 
-    public void Dispose()
+        _logger.LogInfo("Characteristic registration completed");
+    }
+public void Dispose()
+{
+    lock (_lock)
     {
-        if (_device.Gatt != null)
+        if (_isDisposed) return;
+
+        if (_asyncCharacteristic != null)
+        {
+            _asyncCharacteristic.CharacteristicValueChanged -= (sender, eventArgs) =>
+                ProcessCharacteristic("Async", eventArgs.Value);
+        }
+        if (_syncTxCharacteristic != null)
+        {
+            _syncTxCharacteristic.CharacteristicValueChanged -= (sender, eventArgs) =>
+                ProcessCharacteristic("Sync Tx", eventArgs.Value);
+        }
+
+        if (_device?.Gatt != null && _device.Gatt.IsConnected)
         {
             _device.Gatt.Disconnect();
         }
+
+        _isDisposed = true;
+        GC.SuppressFinalize(this);
+    }
+}
+    private void ProcessCharacteristic(string source, byte[] value)
+    {
+        if (_isDisposed) return;
+        _logger.LogDebug($"Processing {source} characteristic: {BitConverter.ToString(value)}");
+        _zapDevice.ProcessCharacteristic(source, value);
     }
 
+    private void OnAsyncCharacteristicChanged(object sender, GattCharacteristicValueChangedEventArgs e)
+    {
+        ProcessCharacteristic("Async", e.Value);
+    }
+
+    private void OnSyncTxCharacteristicChanged(object sender, GattCharacteristicValueChangedEventArgs e)
+    {
+        ProcessCharacteristic("Sync Tx", e.Value);
+    }
 }

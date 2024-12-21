@@ -1,10 +1,12 @@
 ﻿using Google.Protobuf;
 using ZwiftPlayConsoleApp.BLE;
+using ZwiftPlayConsoleApp.Logging;
 
 namespace ZwiftPlayConsoleApp.Zap.Proto;
 
 public class ControllerNotification
 {
+    private readonly IZwiftLogger _logger;
     private const int BTN_PRESSED = 0;
 
     private const string SHOULDER_NAME = "Shoulder";
@@ -12,7 +14,7 @@ public class ControllerNotification
     private const string STEER_NAME = "Steer/Brake";
     private const string UNKNOWN_NAME = "???";
 
-    private bool _isRightController = false;
+    private readonly bool _isRightController = false;
 
     public bool buttonYPressed = false;// or up on left controller
     public bool buttonZPressed = false; // or left on left controller
@@ -27,27 +29,30 @@ public class ControllerNotification
 
     public int somethingValue = 0;
 
-    public ControllerNotification(byte[] messageBytes)
+    public ControllerNotification(byte[] messageBytes, IZwiftLogger logger)
     {
-        var input = new CodedInputStream(messageBytes);
-        while (true)
+        _logger = logger;
+        try
         {
-            var tag = input.ReadTag();
-            var type = WireFormat.GetTagWireType(tag);
-            if (tag == 0 || type == WireFormat.WireType.EndGroup)
+            var input = new CodedInputStream(messageBytes);
+            while (true)
             {
-                break;
-            }
+                var tag = input.ReadTag();
+                var type = WireFormat.GetTagWireType(tag);
+                if (tag == 0 || type == WireFormat.WireType.EndGroup)
+                {
+                    break;
+                }
 
-            var number = WireFormat.GetTagFieldNumber(tag);
+                var number = WireFormat.GetTagFieldNumber(tag);
 
-            switch (type)
-            {
-                case WireFormat.WireType.Varint:
-                    var value = input.ReadInt64();
-                    switch (number)
-                    {
-                        case 1:
+                switch (type)
+                {
+                    case WireFormat.WireType.Varint:
+                        var value = input.ReadInt64();
+                        switch (number)
+                        {
+                            case 1:
                             _isRightController = value == BTN_PRESSED;
                             break;
                         case 2:
@@ -76,13 +81,20 @@ public class ControllerNotification
                             break;
 
                         default:
-                            throw new ArgumentException("Unexpected tag");
+                                _logger.LogWarning($"Unexpected tag: {number}");
+                                throw new ArgumentException("Unexpected tag");
                     }
                     break;
                 default:
+                    _logger.LogWarning($"Unexpected wire type: {type}");
                     throw new ArgumentException("Unexpected wire type");
-                    break;
+                }
             }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError("Failed to parse controller notification", ex);
+            throw;
         }
     }
 
@@ -100,14 +112,14 @@ public class ControllerNotification
         return diff;
     }
 
-    private string Diff(string title, bool pressedValue, bool oldPressedValue)
+    private static string Diff(string title, bool pressedValue, bool oldPressedValue)
     {
         if (pressedValue != oldPressedValue)
             return $"{title}={(pressedValue ? "Pressed" : "Released")} ";
         return "";
     }
 
-    private string Diff(string title, int newValue, int oldValue)
+    private static string Diff(string title, int newValue, int oldValue)
     {
         if (newValue != oldValue)
             return $"{title}={newValue} ";
@@ -160,7 +172,7 @@ public class ControllerNotification
         return diffList.ToArray();
     }
 
-    private void DiffChange(List<ButtonChange> changes, ZwiftPlayButton button, bool pressedValue, bool oldPressedValue)
+    private static void DiffChange(List<ButtonChange> changes, ZwiftPlayButton button, bool pressedValue, bool oldPressedValue)
     {
         if (pressedValue != oldPressedValue)
         {
