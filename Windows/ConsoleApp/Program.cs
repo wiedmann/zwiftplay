@@ -84,8 +84,10 @@ public class App
         }
 
         SetupBluetoothHandler();
-        await RunScanningLoop();
-        await HandleUserInput();
+        await Task.WhenAny(
+            RunScanningLoop(),
+            HandleUserInput()
+        );
         CleanupResources();
     }
 
@@ -147,16 +149,18 @@ public class App
         {
             try
             {
-                if (Console.In.Peek() != -1)
+                if (Console.KeyAvailable && !_config.SendKeys)
                 {
                     var key = Console.ReadKey(true);
                     if (key.KeyChar == 'q')
                     {
                         _logger.LogInfo("Shutting down...");
+                        Console.WriteLine("Shutting down...");
                         _scanCts.Cancel();
-                        break;
+                        Environment.Exit(0);
                     }
                 }
+                await Task.Delay(10); // Reduced delay for better responsiveness
             }
             catch (InvalidOperationException)
             {
@@ -164,7 +168,6 @@ public class App
                 await Task.Delay(1000);
                 continue;
             }
-            await Task.Delay(100);
         }
 }
     private void CleanupResources()

@@ -29,6 +29,11 @@ public class ControllerNotification
 
     public int somethingValue = 0;
 
+    private string GetShoulderName()
+    {
+        return _isRightController ? "Right Shoulder" : "Left Shoulder";
+    }
+
     public ControllerNotification(byte[] messageBytes, IZwiftLogger logger)
     {
         _logger = logger;
@@ -105,7 +110,8 @@ public class ControllerNotification
         diff += Diff(NameZ(), buttonZPressed, previousNotification.buttonZPressed);
         diff += Diff(NameA(), buttonAPressed, previousNotification.buttonAPressed);
         diff += Diff(NameB(), buttonBPressed, previousNotification.buttonBPressed);
-        diff += Diff(SHOULDER_NAME, shoulderButtonPressed, previousNotification.shoulderButtonPressed);
+        //diff += Diff(SHOULDER_NAME, shoulderButtonPressed, previousNotification.shoulderButtonPressed);
+        diff += Diff(GetShoulderName(), shoulderButtonPressed, previousNotification.shoulderButtonPressed);
         diff += Diff(POWER_NAME, powerButtonPressed, previousNotification.powerButtonPressed);
         diff += Diff(STEER_NAME, steerBrakeValue, previousNotification.steerBrakeValue);
         diff += Diff(UNKNOWN_NAME, somethingValue, previousNotification.somethingValue);
