@@ -1,5 +1,10 @@
 ﻿namespace ZwiftPlayConsoleApp.Configuration;
 
+public class Config
+{
+    public bool SendKeys { get; set; } = false;
+}
+
 public class BleScanConfig
 {
     public int ScanTimeoutMs { get; set; } = 30000;

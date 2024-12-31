@@ -3,6 +3,7 @@ using ZwiftPlayConsoleApp.Utils;
 using ZwiftPlayConsoleApp.Zap;
 using ZwiftPlayConsoleApp.Zap.Crypto;
 using ZwiftPlayConsoleApp.Zap.Proto;
+using ZwiftPlayConsoleApp.Configuration;
 
 namespace ZwiftPlayConsoleApp.BLE;
 
@@ -13,8 +14,11 @@ public class ZwiftPlayDevice : AbstractZapDevice
     private int _batteryLevel;
     private ControllerNotification? _lastButtonState;
 
-    public ZwiftPlayDevice(IZwiftLogger logger) : base(logger)
+    private readonly Config _config;
+
+    public ZwiftPlayDevice(IZwiftLogger logger, Config config) : base(logger)
     {
+        _config = config;
     }
 
     protected override void ProcessEncryptedData(byte[] bytes)
@@ -89,7 +93,7 @@ public class ZwiftPlayDevice : AbstractZapDevice
 
     private void ProcessButtonNotification(ControllerNotification notification)
     {
-        if (SendKeys)
+        if (_config.SendKeys)
         {
             var changes = notification.DiffChange(_lastButtonState);
             foreach (var change in changes)

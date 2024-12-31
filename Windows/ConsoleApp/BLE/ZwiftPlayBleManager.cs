@@ -1,6 +1,7 @@
 ﻿using InTheHand.Bluetooth;
 using ZwiftPlayConsoleApp.Logging;
 using ZwiftPlayConsoleApp.Zap;
+using ZwiftPlayConsoleApp.Configuration;
 
 namespace ZwiftPlayConsoleApp.BLE;
 
@@ -13,17 +14,18 @@ public partial class ZwiftPlayBleManager : IDisposable
     private bool _isDisposed;
     private readonly object _lock = new();
 
-
+    private readonly Config _config;
     private static GattCharacteristic? _asyncCharacteristic;
     private static GattCharacteristic? _syncRxCharacteristic;
     private static GattCharacteristic? _syncTxCharacteristic;
 
-    public ZwiftPlayBleManager(BluetoothDevice device, bool isLeft, IZwiftLogger logger)
+    public ZwiftPlayBleManager(BluetoothDevice device, bool isLeft, IZwiftLogger logger, Config config)
     {
         _device = device;
         _isLeft = isLeft;
         _logger = new ConfigurableLogger(((ConfigurableLogger)logger)._config, nameof(ZwiftPlayBleManager));
-        _zapDevice = new ZwiftPlayDevice(new ConfigurableLogger(((ConfigurableLogger)logger)._config, nameof(ZwiftPlayDevice)));
+        _config = config;
+        _zapDevice = new ZwiftPlayDevice(new ConfigurableLogger(((ConfigurableLogger)logger)._config, nameof(ZwiftPlayDevice)), config);
     }
 
     public async Task ConnectAsync()
