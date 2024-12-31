@@ -19,6 +19,8 @@ public class ZwiftPlayDevice : AbstractZapDevice
     public ZwiftPlayDevice(IZwiftLogger logger, Config config) : base(logger)
     {
         _config = config;
+        _logger.LogInfo($"ZwiftPlayDevice initialized with SendKeys: {config.SendKeys}, UseMapping: {config.UseMapping}");
+        Console.WriteLine($"ZwiftPlayDevice initialized with SendKeys: {config.SendKeys}, UseMapping: {config.UseMapping}");
     }
 
     protected override void ProcessEncryptedData(byte[] bytes)
@@ -93,6 +95,7 @@ public class ZwiftPlayDevice : AbstractZapDevice
 
     private void ProcessButtonNotification(ControllerNotification notification)
     {
+
         if (_config.SendKeys)
         {
             var changes = notification.DiffChange(_lastButtonState);

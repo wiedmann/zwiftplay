@@ -5,6 +5,7 @@ using ZwiftPlayConsoleApp.Zap;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ZwiftPlayConsoleApp.Logging;
+using ZwiftPlayConsoleApp.Utils;
 
 namespace ZwiftPlayConsoleApp;
 
@@ -12,21 +13,29 @@ public class Program
 {
     public static async Task Main(string[] args)
     {
-        var services = new ServiceCollection();
-        ConfigureServices(services);
+        var config = new Config();
 
-        var serviceProvider = services.BuildServiceProvider();
-        var config = serviceProvider.GetRequiredService<Config>();
-        var app = serviceProvider.GetRequiredService<App>();
-        if (args.Contains("--sendkeys"))
+        if (args.Contains("--UseMapping"))
+        {
+            config.UseMapping = true;
+            config.SendKeys = true;
+        }
+        else if (args.Contains("--SendKeys"))
         {
             config.SendKeys = true;
         }
 
+        var services = new ServiceCollection();
+        ConfigureServices(services, config);
+
+        var serviceProvider = services.BuildServiceProvider();
+
+        var app = serviceProvider.GetRequiredService<App>();
+
         await app.RunAsync();
     }
 
-    private static void ConfigureServices(IServiceCollection services)
+    private static void ConfigureServices(IServiceCollection services, Config config)
     {
         var loggingConfig = new LoggingConfig 
         {
@@ -36,7 +45,7 @@ public class Program
             EnableAppLogging = false
         };
 
-        var config = new Config();
+        KeyboardKeys.Initialize(config);
         services.AddSingleton(config);
 
         services.AddLogging(builder =>
@@ -54,7 +63,6 @@ public class Program
         services.AddSingleton<BleScanConfig>();
         services.AddSingleton<App>();
         services.AddSingleton<ZwiftPlayDevice>();
-
 
     }
 }
@@ -76,6 +84,15 @@ public class App
     }
     public async Task RunAsync()
     {
+        Console.CancelKeyPress += (sender, eventArgs) =>
+        {
+            eventArgs.Cancel = true; // Prevent immediate termination
+            Console.WriteLine("Shutting down gracefully...");
+            _scanCts.Cancel(); // Cancel BLE scanning
+            CleanupResources(); // Call existing cleanup method
+            Environment.Exit(0);
+        };
+
         var available = await Bluetooth.GetAvailabilityAsync();
         if (!available)
         {

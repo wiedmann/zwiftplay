@@ -1,5 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 using ZwiftPlayConsoleApp.BLE;
+using ZwiftPlayConsoleApp.Configuration;
 
 namespace ZwiftPlayConsoleApp.Utils;
 
@@ -45,10 +46,29 @@ public class KeyboardKeys
     public const int X = 0x58;
     public const int Y = 0x59;
     public const int Z = 0x5A;
+    public const int SUBTRACT = 0x6D;  // Numpad minus
+    public const int ADD = 0x6B;       // Numpad plus
+
+
+    private static Config? _config;
+
+    public static void Initialize(Config config)
+    {
+        _config = config;
+    }
+
 
     public static void ProcessZwiftPlay(ButtonChange change)
     {
-        var keyCode = GetKeyCode(change.Button);
+        if (_config == null || !_config.SendKeys)
+        {
+            return;
+        }
+
+        byte? keyCode = _config.UseMapping 
+            ? _config.KeyboardMapping.ButtonToKeyMap.TryGetValue(change.Button, out var mappedKey) ? mappedKey : null
+            : GetKeyCode(change.Button);
+
 
         if (keyCode == null)
         {
@@ -113,4 +133,5 @@ public class KeyboardKeys
     {
         keybd_event(keyCode, 0x45, KEYEVENTF_KEYUP, 0);
     }
+
 }
