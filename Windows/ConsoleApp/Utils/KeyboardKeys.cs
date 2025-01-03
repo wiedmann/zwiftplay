@@ -1,6 +1,7 @@
 ﻿using System.Runtime.InteropServices;
 using ZwiftPlayConsoleApp.BLE;
 using ZwiftPlayConsoleApp.Configuration;
+using System.Text.Json;
 
 namespace ZwiftPlayConsoleApp.Utils;
 
@@ -11,12 +12,16 @@ public class KeyboardKeys
 
     public const int KEYEVENTF_KEYDOWN = 0x0; 
     public const int KEYEVENTF_KEYUP = 0x2;
+    public const int LSHIFT = 0xA0;
 
     public const int LEFT = 0x25;
     public const int UP = 0x26;
     public const int RIGHT = 0x27;
     public const int DOWN = 0x28;
 
+    public const int PAGEUP = 0x21;
+    public const int PAGEDOWN = 0x22;
+    public const int TAB = 0x09;
     public const int LCONTROL = 0xA2;
     public const int RCONTROL = 0xA3;
 
@@ -49,52 +54,59 @@ public class KeyboardKeys
     public const int SUBTRACT = 0x6D;  // Numpad minus
     public const int ADD = 0x6B;       // Numpad plus
 
-
     private static Config? _config;
 
     public static void Initialize(Config config)
     {
         _config = config;
     }
-
-
-    public static void ProcessZwiftPlay(ButtonChange change)
-    {
-        if (_config == null || !_config.SendKeys)
-        {
+      public static void ProcessZwiftPlay(ButtonChange change)
+      {
+          if (_config == null || !_config.SendKeys)
+          {
             return;
-        }
+          }
 
-        byte? keyCode = _config.UseMapping 
-            ? _config.KeyboardMapping.ButtonToKeyMap.TryGetValue(change.Button, out var mappedKey) ? mappedKey : null
-            : GetKeyCode(change.Button);
+          (byte? keyCode, bool withShift) = _config.UseMapping 
+              ? GetMappedKey(_config.KeyboardMapping.ButtonToKeyMap, change.Button)
+              : (GetKeyCode(change.Button), false);
 
-
-        if (keyCode == null)
-        {
+          if (keyCode == null)
+          {
             return;
-        }
+          }
 
-        if (change.IsPressed)
-        {
-            PressKey((byte)keyCode);
-        }
-        else
-        {
-            ReleaseKey((byte)keyCode);
-        }
-    }
+          if (change.IsPressed)
+          {
+            PressKey((byte)keyCode, withShift);
+          }
+          else
+          {
+            ReleaseKey((byte)keyCode, withShift);
+          }
+      }
 
-    private static byte? GetKeyCode(ZwiftPlayButton button)
-    {
-        switch (button)
-        {
-            case ZwiftPlayButton.Up:
-                return UP;
-            case ZwiftPlayButton.Down:
-                return DOWN;
-            case ZwiftPlayButton.Left:
-                return LEFT;
+      private static (byte? keyCode, bool withShift) GetMappedKey(Dictionary<ZwiftPlayButton, KeyMapping> mapping, ZwiftPlayButton button)
+      {
+          if (mapping.TryGetValue(button, out var keyMapping))
+          {
+            var withShift = keyMapping.OriginalMapping.StartsWith("SHIFT+", StringComparison.OrdinalIgnoreCase);
+            //Console.WriteLine($"Mapped {button} to {keyMapping.OriginalMapping} with shift: {withShift}");
+            return (keyMapping.KeyCode, withShift);
+          }
+          return (null, false);
+      }
+
+      private static byte? GetKeyCode(ZwiftPlayButton button)
+      {
+          switch (button)
+          {
+              case ZwiftPlayButton.Up:
+                  return UP;
+              case ZwiftPlayButton.Down:
+                  return DOWN;
+              case ZwiftPlayButton.Left:
+                  return LEFT;
             case ZwiftPlayButton.Right:
                 return RIGHT;
             case ZwiftPlayButton.LeftShoulder:
@@ -122,16 +134,70 @@ public class KeyboardKeys
         return null;
     }
 
-    private static void PressKey(byte keyCode)
+    public static byte GetKeyCode(object value)
     {
-        // probably need to keep resending this until its released but not really tested.
+        if (value is string strValue)
+        {
+            // Handle special characters
+            return strValue switch
+            {
+                "↑" => UP,
+                "↓" => DOWN,
+                "←" => LEFT,
+                "→" => RIGHT,
+                "+" => ADD,
+                "-" => SUBTRACT,
+                "PAGEUP" => PAGEUP,
+                "PAGEDOWN" => PAGEDOWN,
+                "TAB" => TAB,
+                "SHIFT+TAB" => TAB,
+                _ when strValue.Length == 1 => (byte)char.ToUpper(strValue[0])
+            };
+        }
+        
+        if (value is JsonElement element)
+        {
+            if (element.ValueKind == JsonValueKind.Number)
+            {
+                return element.GetByte();
+            }
+            if (element.ValueKind == JsonValueKind.String)
+            {
+                string str = element.GetString()!;
+                return GetKeyCode(str);
+            }
+        }
 
+        return Convert.ToByte(value);
+    }
+    private static void PressKey(byte keyCode, bool withShift)
+    {
+        if (withShift)
+        {
+            keybd_event(LSHIFT, 0x45, KEYEVENTF_KEYDOWN, 0);
+        }
         keybd_event(keyCode, 0x45, KEYEVENTF_KEYDOWN, 0);
     }
 
-    private static void ReleaseKey(byte keyCode)
+    private static void ReleaseKey(byte keyCode, bool withShift)
     {
         keybd_event(keyCode, 0x45, KEYEVENTF_KEYUP, 0);
+        if (withShift)
+        {
+            keybd_event(LSHIFT, 0x45, KEYEVENTF_KEYUP, 0);
+        }
     }
 
+}
+
+public struct KeyMapping
+{
+    public byte KeyCode { get; set; }
+    public string OriginalMapping { get; set; }
+
+    public KeyMapping(byte keyCode, string originalMapping)
+    {
+        KeyCode = keyCode;
+        OriginalMapping = originalMapping;
+    }
 }

@@ -1,0 +1,19 @@
+{
+  "// Documentation": "This is a template for Zwift Play controller key mappings",
+  "// Format options": "You can use single characters ('A', '+') or virtual key codes (0x41, 107)",
+  "// Special keys": "Arrow keys can be mapped using '←', '↑', '→', '↓' or their key codes 0x25-0x28",
+  "// Button options": "Up, Down, Left, Right, LeftShoulder, RightShoulder, Y, Z, A, B",
+
+  "ButtonToKeyMap": {    
+    "Up": "PAGEUP",
+    "Down": "PAGEDOWN",
+    "Left": "←",
+    "Right": "→",
+    "LeftShoulder": "-",
+    "RightShoulder": "+",
+    "Y": "Y",
+    "Z": "SHIFT+TAB",
+    "A": "TAB",
+    "B": "B"
+  }
+}
