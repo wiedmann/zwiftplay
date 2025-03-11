@@ -60,9 +60,6 @@ public class Program
             }
 
             config.MappingFilePath = fileName;
-            config.LoadMappingFile();
-            Console.WriteLine($"\nLoaded mapping file: {config.MappingFilePath}");
-            Console.WriteLine($"Mapped buttons: {config.KeyboardMapping.ButtonToKeyMap.Count}");
             config.UseMapping = true;
             config.SendKeys = true;
         }
@@ -79,6 +76,12 @@ public class Program
         Console.WriteLine($"AppSettings.json: {File.Exists("Configuration/AppSettings.json")}");
         Console.WriteLine($"Mapping file: {File.Exists(config.MappingFilePath)}");
 
+        if (config.UseMapping)
+        {
+            config.LoadMappingFile();
+            Console.WriteLine($"\nLoaded mapping file: {config.MappingFilePath}");
+            Console.WriteLine($"Mapped buttons: {config.KeyboardMapping.ButtonToKeyMap.Count}");
+        }
         var services = new ServiceCollection();
         ConfigureServices(services, config);
 
@@ -150,6 +153,8 @@ public partial class App : IDisposable
     private readonly Dictionary<string, ZwiftPlayBleManager> _bleManagers = new();
     private readonly HashSet<string> _connectedDevices = new();
     private readonly CancellationTokenSource _scanCts = new();
+    private bool _leftConnected = false;
+    private bool _rightConnected = false;
 
     public App(IZwiftLogger logger, Config config, IOptions<AppSettings> settings)
     {
@@ -221,17 +226,28 @@ public partial class App : IDisposable
           var isLeft = manufacturerData[0] == ZapConstants.RC1_LEFT_SIDE;
           var deviceKey = $"{(isLeft ? "Left" : "Right")}_{scanResult.Device.Id}";
 
-          if (!_connectedDevices.Contains(deviceKey))
-          {
-              _logger.LogInfo($"Found {(isLeft ? "Left" : "Right")} controller");
-              Console.WriteLine($"Found {(isLeft ? "Left" : "Right")} controller");
-              var manager = new ZwiftPlayBleManager(scanResult.Device, isLeft, _logger, _config);
-              _bleManagers[deviceKey] = manager;
-              _connectedDevices.Add(deviceKey);
+            if (!_connectedDevices.Contains(deviceKey))
+            {
+                _logger.LogInfo($"Found {(isLeft ? "Left" : "Right")} controller");
+                Console.WriteLine($"Found {(isLeft ? "Left" : "Right")} controller");
+                if ((isLeft && _leftConnected) || (!isLeft && _rightConnected))
+                {
+                    return;
+                }
+                if (isLeft)
+                {
+                    _leftConnected = true;
+                }
+                else {
+                    _rightConnected = true;
+                }
+                var manager = new ZwiftPlayBleManager(scanResult.Device, isLeft, _logger, _config);
+                _bleManagers[deviceKey] = manager;
+                _connectedDevices.Add(deviceKey);
 
-              using var cts = new CancellationTokenSource(_settings.DefaultConnectionTimeoutMs);
-              await manager.ConnectAsync();
-          }
+                using var cts = new CancellationTokenSource(_settings.DefaultConnectionTimeoutMs);
+                await manager.ConnectAsync();
+            }
       }    
 
       private async Task RunScanningLoop()
