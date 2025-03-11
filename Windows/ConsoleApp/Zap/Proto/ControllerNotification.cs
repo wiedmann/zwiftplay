@@ -24,6 +24,9 @@ public class ControllerNotification
     public bool shoulderButtonPressed = false;
     public bool powerButtonPressed = false;
 
+    public bool steeringPressed = false;
+    public bool brakePressed = false;
+
     // on the left this will be negative when steering and positive when breaking and vice versa on right
     public int steerBrakeValue = 0;
 
@@ -80,6 +83,16 @@ public class ControllerNotification
                             break;
                         case 8:
                             steerBrakeValue = ProtoUtils.GetSignedValue((int)value);
+                            if (!_isRightController)
+                            {
+                                brakePressed = steerBrakeValue > 10;
+                                steeringPressed = steerBrakeValue < -10;
+                            }
+                            else
+                            {
+                                brakePressed = steerBrakeValue < 10;
+                                steeringPressed = steerBrakeValue > -10;
+                            }
                             break;
                         case 9:
                             somethingValue = (int)value;
@@ -173,6 +186,8 @@ public class ControllerNotification
         DiffChange(diffList, _isRightController ? ZwiftPlayButton.B : ZwiftPlayButton.Down, buttonBPressed, previousNotification?.buttonBPressed ?? false);
         DiffChange(diffList, _isRightController ? ZwiftPlayButton.RightShoulder : ZwiftPlayButton.LeftShoulder, shoulderButtonPressed, previousNotification?.shoulderButtonPressed ?? false);
         DiffChange(diffList, _isRightController ? ZwiftPlayButton.RightPower: ZwiftPlayButton.LeftPower, powerButtonPressed, previousNotification?.powerButtonPressed ?? false);
+        DiffChange(diffList, _isRightController ? ZwiftPlayButton.RightSteer : ZwiftPlayButton.LeftSteer, steeringPressed, previousNotification?.steeringPressed ?? false);
+        DiffChange(diffList, _isRightController ? ZwiftPlayButton.RightBrake : ZwiftPlayButton.LeftBrake, brakePressed, previousNotification?.brakePressed ?? false);
         //diff += Diff(STEER_NAME, steerBrakeValue, previousNotification.steerBrakeValue);
         //diff += Diff(UNKNOWN_NAME, somethingValue, previousNotification.somethingValue);
         return diffList.ToArray();

@@ -19,7 +19,9 @@ public enum ZwiftPlayButton
     Down,
     Left,
     Right,
-    // Left Steer/Brake
+    // Left Steer/Brake synthetic buttons
+    LeftSteer,
+    LeftBrake,
     LeftShoulder,
     LeftPower,
 
@@ -27,7 +29,9 @@ public enum ZwiftPlayButton
     B,
     Y,
     Z,
-    // Right Steer/Brake
+    // Right Steer/Brake synthetic buttons
+    RightSteer,
+    RightBrake,
     RightShoulder,
     RightPower,
 }
