@@ -90,8 +90,8 @@ public class ControllerNotification
                             }
                             else
                             {
-                                brakePressed = steerBrakeValue < 10;
-                                steeringPressed = steerBrakeValue > -10;
+                                steeringPressed = steerBrakeValue > 10;
+                                brakePressed = steerBrakeValue < -10;
                             }
                             break;
                         case 9:
